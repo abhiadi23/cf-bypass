@@ -2,9 +2,11 @@
   "name": "cf-bypass",
   "version": "1.0",
   "description": "get the cf_clearance cookie from any website",
+  "main": "src/index.ts",
   "scripts": {
-    "start": "bun src/index.ts",
-    "test": "bun src/tests/test.ts"
+    "start": "tsx src/index.ts",
+    "test": "tsx src/tests/test.ts",
+    "build": "tsc"
   },
   "dependencies": {
     "chrome-launcher": "^1.1.2",
@@ -16,6 +18,9 @@
     "xvfb": "^0.4.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6"
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.0.0"
   }
 }
