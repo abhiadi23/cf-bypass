@@ -53,11 +53,27 @@ async function initBrowser() {
     if (browser) return browser;
 
     try {
+        // Detect if we are running on Heroku
+        const isHeroku = process.env.NODE_HOME?.includes('heroku') || process.env.CHROME_PATH;
+
         const { browser: connectedBrowser } = await connect({
-            headless: false,
+            // Heroku MUST be headless: true
+            headless: isHeroku ? true : false, 
             turnstile: true,
-            connectOption: { defaultViewport: null },
-            disableXvfb: false,
+            connectOption: { 
+                defaultViewport: null,
+                // Add these args for Linux/Heroku compatibility
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu'
+                ],
+                // Use the environment variable we set earlier
+                executablePath: process.env.CHROME_PATH || undefined 
+            },
+            // Xvfb is usually not needed if headless is true
+            disableXvfb: isHeroku ? true : false,
         });
 
         browser = connectedBrowser;
@@ -73,9 +89,6 @@ async function initBrowser() {
         throw error;
     }
 }
-
-initBrowser().then(() => console.log("Browser initialized")).catch(err => console.error("Initial browser launch failed", err));
-
 
 async function getPage() {
     if (!browser || !browser.isConnected()) {
