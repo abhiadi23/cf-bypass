@@ -152,7 +152,7 @@ export interface ConnectResult {
 
 export async function connect({
     args = [],
-    headless = false,
+    headless = true, // Heroku usually requires true
     customConfig = {},
     proxy = {} as ProxyOptions,
     turnstile = false,
@@ -166,16 +166,15 @@ export async function connect({
     let Xvfb: any;
     try {
         Xvfb = require("xvfb");
-    } catch {
-
-    }
+    } catch (e) {}
 
     let puppeteer = require("rebrowser-puppeteer-core");
-
     let xvfbsession: any = null;
-    if (headless == "auto") headless = false;
 
-    if (process.platform === "linux" && disableXvfb === false) {
+    if (headless === "auto") headless = true;
+
+    // Start XVFB if on Linux and not headless
+    if (process.platform === "linux" && disableXvfb === false && headless === false) {
         try {
             xvfbsession = new Xvfb({
                 silent: true,
@@ -183,26 +182,30 @@ export async function connect({
             });
             xvfbsession.startSync();
         } catch (err: any) {
-            console.log(
-                "You are running on a Linux platform but do not have xvfb installed. The browser can be captured. Please install it with the following command\n\nsudo apt-get install xvfb\n\n" +
-                err.message
-            );
+            console.warn("XVFB failed. Ensure 'xvfb' is installed via buildpack.");
         }
     }
 
     let chromeFlags: string[];
+    // Essential flags for Heroku/Linux environments
+    const essentialFlags = [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+    ];
+
     if (ignoreAllFlags === true) {
         chromeFlags = [
+            ...essentialFlags,
             ...args,
             ...(headless !== false ? [`--headless=${headless}`] : []),
-            ...(proxy && proxy.host && proxy.port
-                ? [`--proxy-server=${proxy.host}:${proxy.port}`]
-                : []),
+            ...(proxy && proxy.host && proxy.port ? [`--proxy-server=${proxy.host}:${proxy.port}`] : []),
         ];
     } else {
-
         const flags = Launcher.defaultFlags();
 
+        // Patch flags for automation detection bypass
         const indexDisableFeatures = flags.findIndex((flag) => flag.startsWith('--disable-features'));
         if (indexDisableFeatures !== -1) {
             flags[indexDisableFeatures] = `${flags[indexDisableFeatures]},AutomationControlled`;
@@ -212,28 +215,27 @@ export async function connect({
         if (indexComponentUpdateFlag !== -1) {
             flags.splice(indexComponentUpdateFlag, 1);
         }
+
         chromeFlags = [
             ...flags,
+            ...essentialFlags,
             ...args,
             ...(headless !== false ? [`--headless=${headless}`] : []),
-            ...(proxy && proxy.host && proxy.port
-                ? [`--proxy-server=${proxy.host}:${proxy.port}`]
-                : []),
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
+            ...(proxy && proxy.host && proxy.port ? [`--proxy-server=${proxy.host}:${proxy.port}`] : []),
         ];
     }
+
+    // FIX: Pass the CHROME_PATH from environment variables to the launcher
     const chrome = await launch({
         ignoreDefaultFlags: true,
         chromeFlags,
+        chromePath: process.env.CHROME_PATH || undefined, 
         ...customConfig,
     });
 
     if (plugins && plugins.length > 0) {
         const { addExtra } = await import("puppeteer-extra");
-
         puppeteer = addExtra(puppeteer);
-
         for (const item of plugins) {
             puppeteer.use(item);
         }
@@ -246,7 +248,7 @@ export async function connect({
 
     let [page] = await browser.pages();
 
-    let pageControllerConfig = {
+    const pageControllerConfig = {
         browser,
         page,
         proxy,
@@ -266,12 +268,12 @@ export async function connect({
         if (target.type() === "page") {
             let newPage = await target.page();
             pageControllerConfig.page = newPage;
-            newPage = await pageController(pageControllerConfig);
+            await pageController(pageControllerConfig);
         }
     });
 
     return {
         browser,
-        page,
+        page: page as PageWithCursor,
     };
 }
